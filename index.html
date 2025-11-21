@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Attendance Pro — Firebase + Swipe</title>
+<style>
+  :root{
+    --bg:#0b1220;--card:#0f1a2b;--muted:#8aa0c4;--text:#e8f0ff;
+    --accent:#4cc9f0;--accent2:#b5179e;--ok:#2ecc71;--bad:#ff4757;--warn:#f1c40f;
+    --br:14px;--shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:radial-gradient(1200px 700px at 15% -10%,#1a2641 0%,#0b1220 45%,#060a14 100%);
+    color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  /* subtle "webgl vibe" canvas background */
+  #bgfx{position:fixed;inset:0;z-index:-1;filter:blur(0.3px) saturate(1.1);opacity:.25}
+
+  .wrap{max-width:1024px;margin:24px auto;padding:16px}
+  .bar{
+    display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:16px;
+  }
+  .brand{display:flex;gap:10px;align-items:center}
+  .dot{width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 18px var(--accent)}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
+  .card{
+    background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+    border:1px solid rgba(255,255,255,.08); border-radius:var(--br); box-shadow:var(--shadow);
+    backdrop-filter: blur(10px); padding:18px;
+  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
+  select,input[type="text"],input[type="date"],input[type="email"],input[type="tel"]{
+    width:100%;background:#0b1627;border:1px solid rgba(255,255,255,.1);outline:none;color:var(--text);
+    padding:10px 12px;border-radius:10px;
+  }
+  button{
+    background:#17253c;color:var(--text);border:1px solid rgba(255,255,255,.1);
+    padding:10px 14px;border-radius:10px;cursor:pointer;transition:.2s;font-weight:700
+  }
+  button:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .primary{background:linear-gradient(135deg,var(--accent),#367bff);border:none}
+  .ghost{background:transparent}
+  .ok{background:linear-gradient(135deg,#2ecc71,#1abc9c);border:none}
+  .bad{background:linear-gradient(135deg,#ff4757,#ff6b81);border:none}
+  .warn{background:linear-gradient(135deg,#f1c40f,#e67e22);border:none;color:#141414}
+
+  /* sections */
+  .hidden{display:none}
+  .center{display:flex;align-items:center;justify-content:center;text-align:center}
+  .spacer{height:12px}
+  .split{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.split{grid-template-columns:1.1fr .9fr}}
+
+  /* swipe deck */
+  .deck{position:relative;height:420px;border:1px dashed rgba(255,255,255,.08);border-radius:12px;overflow:hidden}
+  .s-card{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(560px,92%);min-height:220px;padding:16px 16px 12px;background:#0e1930;border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;box-shadow:0 12px 24px rgba(0,0,0,.4);
+    touch-action:pan-y;cursor:grab;user-select:none
+  }
+  .s-card h3{margin:2px 0 6px;font-size:18px}
+  .muted{color:var(--muted);font-size:13px}
+  .pill{display:inline-block;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:4px 8px;border-radius:999px;font-size:12px;margin-right:6px}
+  .btnrow{display:flex;gap:8px;margin-top:12px}
+  .btnrow>button{flex:1}
+
+  /* manage list */
+  .list{max-height:380px;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:12px}
+  .item{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .item:last-child{border-bottom:none}
+  .item strong{display:block}
+  .tagrow{display:flex;gap:6px;flex-wrap:wrap}
+  .tools{display:flex;gap:6px}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .sheet{width:min(760px,96%);max-height:88vh;overflow:auto;background:#0e1830;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px}
+  .sheet h2{margin:4px 0 12px}
+  .sheet .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .sheet .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .sheet .row{justify-content:space-between}
+  .foot{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+
+  .status{display:flex;gap:10px}
+  .status .box{flex:1;background:#0b1627;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;text-align:center}
+  .status b{font-size:18px}
+
+  .empty{display:flex;align-items:center;justify-content:center;height:300px;flex-direction:column;gap:10px;color:var(--muted)}
+</style>
+</head>
+<body>
+<canvas id="bgfx"></canvas>
+
+<div class="wrap">
+  <div class="bar">
+    <div class="brand"><div class="dot"></div><h1 id="title">Attendance Pro</h1></div>
+    <div class="row">
+      <button id="btnSetup" class="ghost">Setup</button>
+      <button id="btnManage" class="ghost">Manage Students</button>
+      <button id="btnDashboard" class="ghost">Dashboard</button>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <section id="secSetup" class="card">
+    <h2>Class Setup</h2>
+    <div class="grid2">
+      <div>
+        <label>Course</label>
+        <select id="selCourse"></select>
+      </div>
+      <div>
+        <label>Year</label>
+        <select id="selYear"></select>
+      </div>
+      <div>
+        <label>Semester</label>
+        <select id="selSem"></select>
+      </div>
+      <div>
+        <label>Section</label>
+        <select id="selSection"></select>
+      </div>
+      <div>
+        <label>Subject</label>
+        <select id="selSubject"></select>
+      </div>
+      <div>
+        <label>Date</label>
+        <input type="date" id="inpDate" />
+      </div>
+      <div>
+        <label>Teacher</label>
+        <input type="text" id="inpTeacher" placeholder="Mr. Sharma" />
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="row">
+      <button id="btnAddOption" class="warn">Add Course/Year/Sem/Section/Subject</button>
+      <button id="btnToAttendance" class="primary">Continue → Attendance</button>
+    </div>
+  </section>
+
+  <!-- ATTENDANCE -->
+  <section id="secAttend" class="card hidden">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 id="attHead">Mark Attendance</h2>
+      <div class="status" style="min-width:280px">
+        <div class="box">Total<br><b id="statTotal">0</b></div>
+        <div class="box">Present<br><b id="statP">0</b></div>
+        <div class="box">Absent<br><b id="statA">0</b></div>
+      </div>
+    </div>
+
+    <div class="deck" id="deck">
+      <div id="emptyDeck" class="empty hidden">
+        <div>😶 No students found for this class.</div>
+        <button id="btnOpenAddExisting" class="warn">➕ Add Students to this Class</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+      <button id="btnBackSetup" class="ghost">← Back</button>
+      <button id="btnUndo" class="warn">↩ Undo</button>
+      <button id="btnSaveAttendance" class="ok">💾 Save</button>
+    </div>
+  </section>
+
+  <!-- MANAGE -->
+  <section id="secManage" class="card hidden">
+    <h2>Manage Students</h2>
+    <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <label>Search by SID / Name</label>
+        <input type="text" id="searchBox" placeholder="S1010 / Raj..." />
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="btnAddStudent" class="warn">➕ Add New Student</button>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="btnAddExistingManage" class="ghost">➕ Add Students to Class</button>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:space-between;align-items:center;margin:8px 0">
+      <div class="row">
+        <input type="checkbox" id="chkAll" />
+        <label for="chkAll" style="margin:0 0 0 6px">Select All</label>
+      </div>
+      <div class="row">
+        <button id="btnTransfer" class="primary">Transfer / Copy</button>
+        <button id="btnDelete" class="bad">Delete</button>
+        <button id="btnDownload" class="ok">⬇ Download</button>
+        <button id="btnEmail" class="warn">✉ Send Email</button>
+      </div>
+    </div>
+
+    <div id="list" class="list"></div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="secDash" class="card hidden">
+    <h2>Dashboard</h2>
+    <div class="row" style="gap:10px;flex-wrap:wrap">
+      <button id="btnDownloadDash" class="ok">⬇ Download Report</button>
+      <button id="btnEmailDash" class="warn">✉ Send Absent Emails</button>
+      <button id="btnBackToManage" class="ghost">Manage Students</button>
+    </div>
+    <div class="spacer"></div>
+    <div id="dashOut" class="card"></div>
+  </section>
+</div>
+
+<!-- MODALS -->
+
+<!-- Add Options -->
+<div id="modalOptions" class="modal">
+  <div class="sheet">
+    <h2>Add Options</h2>
+    <div class="grid2">
+      <div><label>Course</label><input id="optCourse" type="text" placeholder="B.Tech AI" /></div>
+      <div><label>Year</label><input id="optYear" type="text" placeholder="1st / 2nd / 3rd / 4th" /></div>
+      <div><label>Semester</label><input id="optSem" type="text" placeholder="1st ... 8th" /></div>
+      <div><label>Section</label><input id="optSection" type="text" placeholder="A / B / C ..." /></div>
+      <div><label>Subject</label><input id="optSubject" type="text" placeholder="DSA" /></div>
+    </div>
+    <div class="foot">
+      <button class="ghost" data-close="modalOptions">Close</button>
+      <button id="btnSaveOptions" class="ok">Save Options</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Student -->
+<div id="modalStudent" class="modal">
+  <div class="sheet">
+    <h2 id="stHdr">Add Student</h2>
+    <input type="hidden" id="stSIDHidden" />
+    <div class="grid3">
+      <div><label>SID</label><input id="stSID" type="text" placeholder="S1050" /></div>
+      <div><label>Name</label><input id="stName" type="text" placeholder="Harsh Vardhan" /></div>
+      <div><label>Email</label><input id="stEmail" type="email" placeholder="student@uni.edu" /></div>
+
+      <div><label>Contact</label><input id="stContact" type="tel" placeholder="98765..." /></div>
+      <div><label>Course</label><select id="stCourse"></select></div>
+      <div><label>Year</label><select id="stYear"></select></div>
+
+      <div><label>Semester</label><select id="stSem"></select></div>
+      <div><label>Section</label><select id="stSection"></select></div>
+      <div><label>Subject</label><select id="stSubject"></select></div>
+
+      <div style="grid-column:1/-1"><label>Address</label><input id="stAddress" type="text" placeholder="Jaipur, Rajasthan" /></div>
+
+      <div><label>Father Name</label><input id="stFName" type="text" /></div>
+      <div><label>Father Contact</label><input id="stFContact" type="tel" /></div>
+      <div><label>Father Email</label><input id="stFEmail" type="email" /></div>
+
+      <div><label>Mother Name</label><input id="stMName" type="text" /></div>
+      <div><label>Mother Contact</label><input id="stMContact" type="tel" /></div>
+      <div><label>Mother Email</label><input id="stMEmail" type="email" /></div>
+    </div>
+
+    <h3>Attendance Stats (read-only for profile)</h3>
+    <div class="grid3">
+      <div class="box">Total Classes<br><b id="pTotal">0</b></div>
+      <div class="box">Present<br><b id="pPresent">0</b></div>
+      <div class="box">Absent<br><b id="pAbsent">0</b></div>
+    </div>
+
+    <div class="foot">
+      <button class="ghost" data-close="modalStudent">Cancel</button>
+      <button id="btnSaveStudent" class="ok">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Existing to Class -->
+<div id="modalAddExisting" class="modal">
+  <div class="sheet">
+    <h2>Add Existing Students to This Class</h2>
+    <div class="grid2">
+      <div><label>Search</label><input id="existSearch" type="text" placeholder="Type name or SID..." /></div>
+      <div class="row" style="align-items:flex-end;justify-content:flex-end">
+        <button id="existSelectAll" class="ghost">Select All</button>
+      </div>
+    </div>
+    <div id="existList" class="list" style="margin-top:8px"></div>
+    <h3>Target Class</h3>
+    <div class="grid2">
+      <div><label>Course</label><select id="exCourse"></select></div>
+      <div><label>Year</label><select id="exYear"></select></div>
+      <div><label>Semester</label><select id="exSem"></select></div>
+      <div><label>Section</label><select id="exSection"></select></div>
+      <div style="grid-column:1/-1"><label>Subject</label><select id="exSubject"></select></div>
+    </div>
+    <div class="foot">
+      <button class="ghost" data-close="modalAddExisting">Cancel</button>
+      <button id="btnAddExistingSave" class="primary">Add to Class</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transfer -->
+<div id="modalTransfer" class="modal">
+  <div class="sheet">
+    <h2>Transfer / Copy Selected Students</h2>
+    <div class="grid2">
+      <div><label>Action</label>
+        <select id="tfAction">
+          <option value="transfer">Transfer (move)</option>
+          <option value="copy">Copy (assign also)</option>
+        </select>
+      </div>
+      <div><label>Section</label><select id="tfSection"></select></div>
+      <div><label>Course</label><select id="tfCourse"></select></div>
+      <div><label>Year</label><select id="tfYear"></select></div>
+      <div><label>Semester</label><select id="tfSem"></select></div>
+      <div style="grid-column:1/-1"><label>Subject</label><select id="tfSubject"></select></div>
+    </div>
+    <div class="foot">
+      <button class="ghost" data-close="modalTransfer">Cancel</button>
+      <button id="btnTransferGo" class="primary">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* ================================
+   LIGHT “WEBGL” BG ANIMATION
+==================================*/
+const cv = document.getElementById('bgfx');
+const ctx = cv.getContext('2d');
+let W,H,pts=[];
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;pts=Array.from({length:90},()=>({
+  x:Math.random()*W,y:Math.random()*H,
+  vx:(Math.random()-.5)*0.6,vy:(Math.random()-.5)*0.6,r:1+Math.random()*2
+}));}
+addEventListener('resize',resize);resize();
+function loop(){
+  ctx.clearRect(0,0,W,H);
+  for(const p of pts){
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0||p.x>W)p.vx*=-1;
+    if(p.y<0||p.y>H)p.vy*=-1;
+    ctx.beginPath();
+    const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*40);
+    g.addColorStop(0,'rgba(76,201,240,.35)');
+    g.addColorStop(1,'rgba(181,23,158,0)');
+    ctx.fillStyle=g;
+    ctx.arc(p.x,p.y,p.r*40,0,Math.PI*2);
+    ctx.fill();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+
+/* ================================
+   DATA LAYER (Firebase + fallback)
+==================================*/
+const defaultOptions = {
+  course: ["B.Tech CSE","BCA","MSc"],
+  year: ["1st","2nd","3rd","4th"],
+  semester:["1st","2nd","3rd","4th","5th","6th","7th","8th"],
+  section:["A","B","C","D"],
+  subject:["Mathematics","Data Structures","Operating Systems","English","Physics"]
+};
+
+// Firebase (replace with real keys for online sync)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxxxxxx"
+};
+
+let useFirebase = firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY";
+let db = null;
+
+async function initFirebase(){
+  if(!useFirebase) return;
+  try{
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js');
+    const { getDatabase, ref, get, set, update, remove, onValue } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js');
+    const app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    Object.assign(API,{ref,get,set,update,remove,onValue});
+  }catch(e){
+    console.warn('Firebase init failed, falling back to localStorage.', e);
+    useFirebase=false;
+  }
+}
+const LS = {
+  get(key){return JSON.parse(localStorage.getItem(key) || 'null')},
+  set(key,val){localStorage.setItem(key,JSON.stringify(val))}
+};
+
+const API = {
+  async load(){
+    if(useFirebase){
+      const snap = await API.get(API.ref(db,'/'));
+      return snap.exists() ? snap.val() : null;
+    }else{
+      return LS.get('attendance_app');
+    }
+  },
+  async save(obj){
+    if(useFirebase){
+      await API.set(API.ref(db,'/'),obj);
+    }else{
+      LS.set('attendance_app',obj);
+    }
+  },
+  async patch(path, obj){
+    if(useFirebase){
+      await API.update(API.ref(db,path),obj);
+    }else{
+      const root = LS.get('attendance_app')||{};
+      const parts = path.replace(/^\/+/,'').split('/');
+      let cur = root;
+      for(let i=0;i<parts.length-1;i++){
+        cur[parts[i]] = cur[parts[i]] || {};
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length-1]] = {...(cur[parts[parts.length-1]]||{}), ...obj};
+      LS.set('attendance_app',root);
+    }
+  }
+}
+
+function makeRandomStudents(n=50){
+  const fn = ["Anjali","Rahul","Priya","Vikram","Neha","Arjun","Sanya","Kabir","Ishita","Rohit","Riya","Kunal","Tanya","Yuvraj","Aditi","Mehul","Zara","Ibrahim","Palak","Shreya","Sameer","Sahil","Gauri","Rehan","Nisha"];
+  const ln = ["Kumar","Sharma","Singh","Gupta","Patel","Yadav","Verma","Mehta","Chauhan","Bansal","Kapoor","Trivedi"];
+  const arr = {};
+  for(let i=1;i<=n;i++){
+    const name = fn[Math.floor(Math.random()*fn.length)]+' '+ln[Math.floor(Math.random()*ln.length)];
+    const sid = 'S'+String(1000+i);
+    const course = pick(defaultOptions.course);
+    const year = pick(defaultOptions.year);
+    const sem = pick(defaultOptions.semester);
+    const section = pick(defaultOptions.section);
+    const subject = pick(defaultOptions.subject);
+    arr[sid] = {
+      sid,name, email: (name.toLowerCase().replace(/\s+/g,'.'))+'@uni.edu',
+      contact: "9"+String(Math.floor(1e9+Math.random()*9e9)).slice(0,9),
+      course, year, semester: sem, section, subject,
+      address:"Jaipur, Rajasthan",
+      fatherName:"Mr. "+ln[Math.floor(Math.random()*ln.length)],
+      fatherContact:"98"+String(Math.floor(1e8+Math.random()*9e8)),
+      fatherEmail:"father."+sid.toLowerCase()+"@mail.com",
+      motherName:"Mrs. "+ln[Math.floor(Math.random()*ln.length)],
+      motherContact:"97"+String(Math.floor(1e8+Math.random()*9e8)),
+      motherEmail:"mother."+sid.toLowerCase()+"@mail.com",
+      attendance:{total:0,present:0,absent:0}
+    }
+  }
+  return arr;
+}
+function pick(a){return a[Math.floor(Math.random()*a.length)]}
+
+let app = {
+  options: JSON.parse(JSON.stringify(defaultOptions)),
+  students: {},         // map by SID
+  attendance: {},       // records: key -> {meta, students{sid: "Present"/"Absent"}}
+};
+
+function classKey(sel){ // unique key for attendance record
+  return `${sel.date}_${sel.course}_${sel.year}_${sel.sem}_${sel.section}_${sel.subject}`.replace(/\s+/g,'');
+}
+
+/* ================================
+   STATE + UI BINDINGS
+==================================*/
+const el = s=>document.querySelector(s);
+const els = s=>document.querySelectorAll(s);
+
+// Sections
+const secSetup = el('#secSetup');
+const secAttend= el('#secAttend');
+const secManage= el('#secManage');
+const secDash  = el('#secDash');
+
+// Setup inputs
+const selCourse = el('#selCourse');
+const selYear   = el('#selYear');
+const selSem    = el('#selSem');
+const selSection= el('#selSection');
+const selSubject= el('#selSubject');
+const inpDate   = el('#inpDate');
+const inpTeacher= el('#inpTeacher');
+
+// Attendance
+const deck = el('#deck');
+const emptyDeck = el('#emptyDeck');
+const btnOpenAddExisting = el('#btnOpenAddExisting');
+const statTotal = el('#statTotal');
+const statP     = el('#statP');
+const statA     = el('#statA');
+
+// Manage
+const list = el('#list');
+const searchBox = el('#searchBox');
+const chkAll = el('#chkAll');
+
+// Modals
+function openModal(id){el('#'+id).style.display='flex'}
+function closeModal(id){el('#'+id).style.display='none'}
+els('[data-close]').forEach(b=>b.addEventListener('click',()=>closeModal(b.getAttribute('data-close'))))
+
+// Fill selects
+function fillSelect(node, arr, withAll=false, allLabel="All"){
+  node.innerHTML = '';
+  if(withAll){
+    const o = document.createElement('option'); o.value='All'; o.textContent=allLabel; node.appendChild(o);
+  }
+  arr.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;node.appendChild(o)});
+}
+function fillGlobalSelects(){
+  fillSelect(selCourse, app.options.course);
+  fillSelect(selYear, app.options.year);
+  fillSelect(selSem, app.options.semester);
+  fillSelect(selSection, app.options.section, true, 'All Sections');
+  fillSelect(selSubject, app.options.subject);
+
+  // modals
+  [el('#stCourse'),el('#stYear'),el('#stSem'),el('#stSection'),el('#stSubject'),
+   el('#exCourse'),el('#exYear'),el('#exSem'),el('#exSection'),el('#exSubject'),
+   el('#tfCourse'),el('#tfYear'),el('#tfSem'),el('#tfSection'),el('#tfSubject')].forEach((n,i)=>{
+     if(!n) return;
+     const id = n.id;
+     if(id.endsWith('Course')) fillSelect(n, app.options.course);
+     if(id.endsWith('Year')) fillSelect(n, app.options.year);
+     if(id.endsWith('Sem')) fillSelect(n, app.options.semester);
+     if(id.endsWith('Section')) fillSelect(n, app.options.section);
+     if(id.endsWith('Subject')) fillSelect(n, app.options.subject);
+   });
+}
+function today(){return new Date().toISOString().slice(0,10)}
+
+/* ================================
+   LOAD / SAVE APP
+==================================*/
+async function loadApp(){
+  await initFirebase();
+  const saved = await API.load();
+  if(saved){
+    app = saved;
+  }else{
+    app.options = JSON.parse(JSON.stringify(defaultOptions));
+    app.students = makeRandomStudents(50);
+    app.attendance = {};
+    await API.save(app);
+  }
+}
+async function persist(){ await API.save(app) }
+
+/* ================================
+   SETUP → ATTENDANCE
+==================================*/
+let currentClass = null; // {course,year,sem,section,subject,date,teacher}
+let deckOrder = [];      // array of SIDs for current class
+let marks = {};          // sid -> "Present"/"Absent"
+let history = [];        // undo stack
+
+function getCurrentSelection(){
+  return {
+    course: selCourse.value,
+    year: selYear.value,
+    sem: selSem.value,
+    section: selSection.value,
+    subject: selSubject.value,
+    date: inpDate.value || today(),
+    teacher: inpTeacher.value || 'Mr. Sharma'
+  }
+}
+function filterStudentsForClass(sel){
+  return Object.values(app.students).filter(s =>
+    s.course===sel.course &&
+    s.year===sel.year &&
+    s.semester===sel.sem &&
+    (sel.section==='All' || s.section===sel.section) &&
+    s.subject===sel.subject
+  );
+}
+function showSection(node){
+  [secSetup,secAttend,secManage,secDash].forEach(s=>s.classList.add('hidden'));
+  node.classList.remove('hidden');
+}
+
+function buildDeck(list){
+  deck.innerHTML = '';
+  if(list.length===0){
+    emptyDeck.classList.remove('hidden');
+    deck.appendChild(emptyDeck);
+    return;
+  } else emptyDeck.classList.add('hidden');
+
+  // top-most last in order so z-index stacks nicely
+  list.forEach((st,i)=>{
+    const c = document.createElement('div');
+    c.className='s-card';
+    c.style.zIndex=10+i;
+    c.style.transform += ` translateY(${(list.length-1-i)*4}px) scale(${1-(list.length-1-i)*0.02})`;
+    c.dataset.sid = st.sid;
+    c.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <h3>${st.name} <span class="pill">${st.sid}</span></h3>
+          <div class="muted">${st.course} • Year ${st.year} • Sem ${st.semester} • Sec ${st.section}</div>
+          <div class="muted">Subject: <b>${st.subject}</b></div>
+        </div>
+        <div class="tagrow">
+          <span class="pill">${st.email}</span>
+          <span class="pill">${st.contact}</span>
+        </div>
+      </div>
+      <div class="btnrow">
+        <button class="bad" data-act="absent">Absent (←)</button>
+        <button class="ok" data-act="present">Present (→)</button>
+      </div>
+    `;
+    attachCard(c);
+    deck.appendChild(c);
+  });
+}
+function attachCard(card){
+  const sid = card.dataset.sid;
+  const onClick = e=>{
+    if(e.target.dataset.act==='present') mark(sid,'Present',card,1);
+    if(e.target.dataset.act==='absent')  mark(sid,'Absent',card,-1);
+  };
+  card.addEventListener('click', onClick);
+
+  let drag=false,sx=0,sy=0;
+  const start = ev=>{
+    drag=true; card.style.transition='none';
+    const t=ev.touches?ev.touches[0]:ev;
+    sx=t.clientX; sy=t.clientY;
+    card.setPointerCapture?.(ev.pointerId||undefined);
+  };
+  const move = ev=>{
+    if(!drag) return;
+    const t=ev.touches?ev.touches[0]:ev;
+    const dx=t.clientX-sx, dy=t.clientY-sy;
+    card.style.transform = `translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${dx/18}deg)`;
+    card.style.opacity = String(1-Math.min(Math.abs(dx)/300,0.6));
+  };
+  const end = ev=>{
+    if(!drag) return; drag=false;
+    const t=ev.changedTouches?ev.changedTouches[0]:ev;
+    const dx=t.clientX-sx;
+    card.style.transition='transform .25s ease, opacity .25s ease';
+    if(dx>100) mark(sid,'Present',card,1);
+    else if(dx<-100) mark(sid,'Absent',card,-1);
+    else{
+      card.style.transform='translate(-50%,-50%)';
+      card.style.opacity='1';
+    }
+  };
+  card.addEventListener('mousedown',start);
+  window.addEventListener('mousemove',move);
+  window.addEventListener('mouseup',end);
+  card.addEventListener('touchstart',start,{passive:true});
+  card.addEventListener('touchmove',move,{passive:true});
+  card.addEventListener('touchend',end);
+}
+function mark(sid, status, card, dir){
+  if(marks[sid]) return; // already marked
+  marks[sid]=status;
+  history.push(sid);
+  card.style.transition='transform .25s ease, opacity .25s ease';
+  card.style.transform=`translate(-50%,-50%) translate(${dir*600}px,0) rotate(${dir*25}deg)`;
+  card.style.opacity='0';
+  setTimeout(()=>{card.remove(); updateStats();},220);
+}
+function updateStats(){
+  const total=deckOrder.length;
+  const p=Object.values(marks).filter(x=>x==='Present').length;
+  const a=Object.values(marks).filter(x=>x==='Absent').length;
+  statTotal.textContent=String(total);
+  statP.textContent=String(p);
+  statA.textContent=String(a);
+}
+
+/* ================================
+   MANAGE LIST
+==================================*/
+let listFilter = '';
+let selection = new Set();
+
+function renderList(){
+  const items = Object.values(app.students)
+    .filter(s=> (s.name.toLowerCase().includes(listFilter) || s.sid.toLowerCase().includes(listFilter)) )
+    .sort((a,b)=>a.name.localeCompare(b.name));
+
+  list.innerHTML='';
+  if(items.length===0){
+    list.innerHTML = `<div class="empty">No students matched.</div>`;
+  }
+  items.forEach(st=>{
+    const row = document.createElement('div');
+    row.className='item';
+    row.innerHTML=`
+      <input type="checkbox" data-sid="${st.sid}" ${selection.has(st.sid)?'checked':''} />
+      <div>
+        <strong>${st.name}</strong>
+        <div class="muted">${st.sid} • ${st.course}, Y${st.year}, Sem ${st.semester}, Sec ${st.section} • ${st.subject}</div>
+        <div class="tagrow">
+          <span class="pill">${st.email}</span>
+          <span class="pill">${st.contact}</span>
+          <span class="pill">${st.address||''}</span>
+        </div>
+      </div>
+      <div class="tools">
+        <button data-edit="${st.sid}" class="ghost">Edit</button>
+        <button data-del="${st.sid}" class="bad">Delete</button>
+      </div>
+    `;
+    // events
+    row.querySelector('input[type=checkbox]').addEventListener('change',e=>{
+      const sid = e.target.dataset.sid;
+      if(e.target.checked) selection.add(sid); else selection.delete(sid);
+      syncSelectAllCheckbox();
+    });
+    row.querySelector('[data-edit]').addEventListener('click',()=>openEdit(st.sid));
+    row.querySelector('[data-del]').addEventListener('click',()=>deleteStudent(st.sid));
+    list.appendChild(row);
+  });
+}
+function syncSelectAllCheckbox(){
+  const items = Object.values(app.students)
+    .filter(s=>s.name.toLowerCase().includes(listFilter)||s.sid.toLowerCase().includes(listFilter));
+  chkAll.checked = items.length>0 && items.every(s=>selection.has(s.sid));
+}
+
+/* ================================
+   CRUD
+==================================*/
+function openAdd(){
+  el('#stHdr').textContent='Add Student';
+  el('#stSIDHidden').value='';
+  el('#stSID').disabled=false;
+  fillProfileFields({});
+  openModal('modalStudent');
+}
+function openEdit(sid){
+  const s = app.students[sid];
+  if(!s) return;
+  el('#stHdr').textContent='Edit Student';
+  el('#stSIDHidden').value=sid;
+  el('#stSID').disabled=true;
+  fillProfileFields(s);
+  // stats (read-only)
+  el('#pTotal').textContent = s.attendance?.total||0;
+  el('#pPresent').textContent = s.attendance?.present||0;
+  el('#pAbsent').textContent = s.attendance?.absent||0;
+  openModal('modalStudent');
+}
+function fillProfileFields(s){
+  el('#stSID').value = s.sid||'';
+  el('#stName').value = s.name||'';
+  el('#stEmail').value= s.email||'';
+  el('#stContact').value=s.contact||'';
+  el('#stCourse').value = s.course||app.options.course[0];
+  el('#stYear').value   = s.year  ||app.options.year[0];
+  el('#stSem').value    = s.semester||app.options.semester[0];
+  el('#stSection').value= s.section||app.options.section[0];
+  el('#stSubject').value= s.subject||app.options.subject[0];
+  el('#stAddress').value= s.address||'';
+  el('#stFName').value  = s.fatherName||'';
+  el('#stFContact').value=s.fatherContact||'';
+  el('#stFEmail').value = s.fatherEmail||'';
+  el('#stMName').value  = s.motherName||'';
+  el('#stMContact').value=s.motherContact||'';
+  el('#stMEmail').value = s.motherEmail||'';
+}
+async function saveStudent(){
+  const sidHidden = el('#stSIDHidden').value.trim();
+  const sid = sidHidden || el('#stSID').value.trim();
+  const name = el('#stName').value.trim();
+  if(!sid || !name){ alert('SID and Name are required'); return; }
+  const s = {
+    sid,
+    name,
+    email: el('#stEmail').value.trim(),
+    contact: el('#stContact').value.trim(),
+    course: el('#stCourse').value,
+    year: el('#stYear').value,
+    semester: el('#stSem').value,
+    section: el('#stSection').value,
+    subject: el('#stSubject').value,
+    address: el('#stAddress').value.trim(),
+    fatherName: el('#stFName').value.trim(),
+    fatherContact: el('#stFContact').value.trim(),
+    fatherEmail: el('#stFEmail').value.trim(),
+    motherName: el('#stMName').value.trim(),
+    motherContact: el('#stMContact').value.trim(),
+    motherEmail: el('#stMEmail').value.trim(),
+    attendance: app.students[sid]?.attendance || {total:0,present:0,absent:0}
+  };
+  app.students[sid]=s;
+  await persist();
+  closeModal('modalStudent');
+  renderList();
+  // If deck open, refresh
+  if(!secAttend.classList.contains('hidden')) startAttendanceFlow(false);
+}
+async function deleteStudent(sid){
+  if(!confirm('Delete '+sid+'?')) return;
+  delete app.students[sid];
+  await persist();
+  renderList();
+}
+
+/* Transfer / Copy */
+function openTransfer(){
+  if(selection.size===0){ alert('Select students first.'); return; }
+  el('#tfAction').value='transfer';
+  el('#tfCourse').value=selCourse.value;
+  el('#tfYear').value=selYear.value;
+  el('#tfSem').value=selSem.value;
+  el('#tfSection').value=selSection.value==='All'?app.options.section[0]:selSection.value;
+  el('#tfSubject').value=selSubject.value;
+  openModal('modalTransfer');
+}
+async function doTransfer(){
+  const action = el('#tfAction').value;
+  const tc = el('#tfCourse').value, ty = el('#tfYear').value, ts=el('#tfSem').value, tse=el('#tfSection').value, tsub=el('#tfSubject').value;
+  selection.forEach(sid=>{
+    const s = app.students[sid];
+    if(!s) return;
+    if(action==='copy'){
+      // copy means assign the target class attributes (simple overwrite copy for this demo)
+      app.students[sid] = {...s, course:tc, year:ty, semester:ts, section:tse, subject:tsub};
+    }else{
+      // transfer move
+      s.course=tc; s.year=ty; s.semester=ts; s.section=tse; s.subject=tsub;
+    }
+  });
+  await persist();
+  closeModal('modalTransfer');
+  renderList();
+  if(!secAttend.classList.contains('hidden')) startAttendanceFlow(false);
+}
+
+/* Add Existing to Class */
+function openAddExisting(){
+  const sel = getCurrentSelection();
+  el('#exCourse').value = sel.course;
+  el('#exYear').value   = sel.year;
+  el('#exSem').value    = sel.sem;
+  el('#exSection').value= sel.section==='All'?app.options.section[0]:sel.section;
+  el('#exSubject').value= sel.subject;
+  buildExistingList('');
+  openModal('modalAddExisting');
+}
+function buildExistingList(query){
+  const box = el('#existList'); box.innerHTML='';
+  const q = (query||'').toLowerCase();
+  const all = Object.values(app.students).filter(s=> s.name.toLowerCase().includes(q)||s.sid.toLowerCase().includes(q));
+  if(all.length===0){ box.innerHTML='<div class="empty">No students</div>'; return;}
+  all.forEach(s=>{
+    const row = document.createElement('div');
+    row.className='item';
+    row.innerHTML=`
+      <input type="checkbox" data-sid="${s.sid}" />
+      <div>
+        <strong>${s.name}</strong>
+        <div class="muted">${s.sid} • ${s.course} Y${s.year} Sem ${s.semester} Sec ${s.section} • ${s.subject}</div>
+      </div>
+      <div class="tools"><button class="ghost" data-edit="${s.sid}">View</button></div>
+    `;
+    row.querySelector('input').addEventListener('change',()=>{});
+    row.querySelector('[data-edit]').addEventListener('click',()=>openEdit(s.sid));
+    box.appendChild(row);
+  });
+}
+async function addExistingSave(){
+  const course = el('#exCourse').value, year=el('#exYear').value, sem=el('#exSem').value, section=el('#exSection').value, subject=el('#exSubject').value;
+  const checks = el('#existList').querySelectorAll('input[type=checkbox]');
+  let n=0;
+  checks.forEach(c=>{
+    if(c.checked){
+      const s = app.students[c.dataset.sid];
+      if(s){ s.course=course; s.year=year; s.semester=sem; s.section=section; s.subject=subject; n++; }
+    }
+  });
+  if(n===0){ alert('Select at least one student.'); return; }
+  await persist();
+  closeModal('modalAddExisting');
+  if(!secAttend.classList.contains('hidden')) startAttendanceFlow(false);
+  renderList();
+  alert(n+' students added to class.');
+}
+
+/* Select All / Delete / Download / Email */
+function setAllSelected(flag){
+  selection.clear();
+  const filtered = Object.values(app.students)
+    .filter(s=> s.name.toLowerCase().includes(listFilter)||s.sid.toLowerCase().includes(listFilter));
+  if(flag) filtered.forEach(s=>selection.add(s.sid));
+  renderList();
+}
+async function bulkDelete(){
+  if(selection.size===0){ alert('Select students first.'); return; }
+  if(!confirm('Delete '+selection.size+' students?')) return;
+  selection.forEach(sid=> delete app.students[sid]);
+  selection.clear();
+  await persist();
+  renderList();
+}
+function downloadReport(kind='all', source='manage'){
+  // build rows
+  const items = Object.values(app.students).sort((a,b)=>a.name.localeCompare(b.name));
+  let rows = [['SID','Name','Course','Year','Sem','Section','Subject','Status']];
+  const statusFor = sid => {
+    // for last saved class record (if any)
+    for(const k of Object.keys(app.attendance)){
+      const st = app.attendance[k].students?.[sid];
+      if(st) return st;
+    }
+    return '—';
+  };
+  items.forEach(s=>{
+    if(kind==='present'||kind==='absent'){
+      const st=statusFor(s.sid);
+      if((kind==='present' && st!=='Present')||(kind==='absent'&&st!=='Absent')) return;
+    }
+    rows.push([s.sid,s.name,s.course,s.year,s.semester,s.section,s.subject,statusFor(s.sid)]);
+  });
+  const csv = rows.map(r=>r.map(x=>String(x).replace(/"/g,'""')).map(x=>`"${x}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download = `${kind}_students.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+function sendEmails(kind='absent'){
+  // gather emails for absent in last record of current class if available
+  const keys = Object.keys(app.attendance);
+  if(keys.length===0){ alert('No attendance saved yet.'); return;}
+  const last = app.attendance[keys[keys.length-1]];
+  const ids = Object.entries(last.students).filter(([sid,st])=> (kind==='absent'?st==='Absent':st==='Present')).map(([sid])=>sid);
+  if(ids.length===0){ alert('No matching students.'); return;}
+  let emails=[];
+  ids.forEach(id=>{
+    const s = app.students[id]; if(!s) return;
+    emails.push(s.email,s.fatherEmail,s.motherEmail);
+  });
+  const unique = Array.from(new Set(emails.filter(Boolean)));
+  const subject = `Attendance ${kind.toUpperCase()} — ${last.meta.subject} ${last.meta.date}`;
+  const body = `Dear all,\n\nThe following students are ${kind}:\n${ids.map(i=>app.students[i]?.name+' ('+i+')').join('\n')}\n\nRegards,\n${last.meta.teacher}`;
+  location.href = `mailto:${encodeURIComponent(unique.join(','))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/* ================================
+   ATTENDANCE FLOW
+==================================*/
+function startAttendanceFlow(resetMarks=true){
+  currentClass = getCurrentSelection();
+  const list = filterStudentsForClass(currentClass);
+  deckOrder = list.map(s=>s.sid);
+  if(resetMarks){ marks={}; history=[]; }
+  buildDeck(list);
+  updateStats();
+  // show add-existing button when empty
+  if(list.length===0){
+    btnOpenAddExisting.onclick = openAddExisting;
+  }
+}
+async function saveAttendance(){
+  if(deckOrder.length===0){ alert('Nothing to save (no students in this class).'); return; }
+  // update per-student stats
+  for(const sid of deckOrder){
+    const s = app.students[sid]; if(!s) continue;
+    s.attendance = s.attendance||{total:0,present:0,absent:0};
+    if(marks[sid]){
+      s.attendance.total++;
+      if(marks[sid]==='Present') s.attendance.present++; else s.attendance.absent++;
+    }
+  }
+  const key = classKey(currentClass);
+  app.attendance[key] = {
+    meta: { ...currentClass },
+    students: { ...marks }
+  };
+  await persist();
+  // dashboard summary
+  el('#dashOut').innerHTML = `
+    <div><b>Saved:</b> ${currentClass.subject} | ${currentClass.course} | Year ${currentClass.year} | Sem ${currentClass.sem} | Sec ${currentClass.section} | ${currentClass.date}</div>
+    <div class="row" style="gap:8px;margin-top:8px">
+      <span class="pill">Total: ${deckOrder.length}</span>
+      <span class="pill">Present: ${Object.values(marks).filter(x=>x==='Present').length}</span>
+      <span class="pill">Absent: ${Object.values(marks).filter(x=>x==='Absent').length}</span>
+    </div>
+  `;
+  showSection(secDash);
+}
+function undo(){
+  const sid = history.pop();
+  if(!sid) {alert('Nothing to undo.'); return;}
+  delete marks[sid];
+  // reinsert card on top
+  const s = app.students[sid];
+  if(!s) return;
+  const c = document.createElement('div');
+  c.className='s-card'; c.dataset.sid=sid; c.style.zIndex=99;
+  c.innerHTML = `
+    <h3>${s.name} <span class="pill">${s.sid}</span></h3>
+    <div class="muted">${s.course} • Year ${s.year} • Sem ${s.semester} • Sec ${s.section} • Sub ${s.subject}</div>
+    <div class="btnrow">
+      <button class="bad" data-act="absent">Absent (←)</button>
+      <button class="ok" data-act="present">Present (→)</button>
+    </div>
+  `;
+  attachCard(c);
+  deck.appendChild(c);
+  updateStats();
+}
+
+/* ================================
+   WIRING
+==================================*/
+el('#btnSetup').onclick=()=>showSection(secSetup);
+el('#btnManage').onclick=()=>{ showSection(secManage); renderList(); };
+el('#btnDashboard').onclick=()=>showSection(secDash);
+
+el('#btnToAttendance').onclick=()=>{ showSection(secAttend); startAttendanceFlow(true); };
+el('#btnBackSetup').onclick=()=>showSection(secSetup);
+el('#btnUndo').onclick=undo;
+el('#btnSaveAttendance').onclick=saveAttendance;
+
+el('#btnAddOption').onclick=()=>openModal('modalOptions');
+el('#btnSaveOptions').onclick=async()=>{
+  const o=app.options;
+  const addIf = (key,val)=>{ if(val && !o[key].includes(val)) o[key].push(val); };
+  addIf('course', el('#optCourse').value.trim());
+  addIf('year', el('#optYear').value.trim());
+  addIf('semester', el('#optSem').value.trim());
+  addIf('section', el('#optSection').value.trim());
+  addIf('subject', el('#optSubject').value.trim());
+  await persist();
+  fillGlobalSelects();
+  closeModal('modalOptions');
+};
+
+el('#btnAddStudent').onclick=openAdd;
+el('#btnSaveStudent').onclick=saveStudent;
+
+searchBox.addEventListener('input',()=>{listFilter=searchBox.value.trim().toLowerCase(); renderList();});
+chkAll.addEventListener('change',()=>setAllSelected(chkAll.checked));
+
+el('#btnTransfer').onclick=openTransfer;
+el('#btnTransferGo').onclick=doTransfer;
+el('#btnDelete').onclick=bulkDelete;
+el('#btnDownload').onclick=()=>downloadReport('all','manage');
+el('#btnEmail').onclick=()=>sendEmails('absent');
+
+el('#btnDownloadDash').onclick=()=>downloadReport('all','dash');
+el('#btnEmailDash').onclick=()=>sendEmails('absent');
+el('#btnBackToManage').onclick=()=>{showSection(secManage); renderList();};
+
+btnOpenAddExisting.onclick=openAddExisting;
+el('#existSearch').addEventListener('input',e=>buildExistingList(e.target.value));
+el('#existSelectAll').onclick=()=>{
+  const boxes = el('#existList').querySelectorAll('input[type=checkbox]');
+  const allChecked = Array.from(boxes).every(b=>b.checked);
+  boxes.forEach(b=>b.checked=!allChecked);
+};
+el('#btnAddExistingSave').onclick=addExistingSave;
+
+/* ================================
+   INIT
+==================================*/
+(async function(){
+  await loadApp();
+  fillGlobalSelects();
+  inpDate.value = today();
+  el('#title').textContent = `Attendance Tracker (${useFirebase?'Offline':'Online'})`;
+  showSection(secSetup);
+  renderList();
+})();
+</script>
+</body>
+</html>
